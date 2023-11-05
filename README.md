@@ -1,15 +1,23 @@
-# canon-r7-ccapi
+# canon-r-lightpainting
 
-This library is not just for the R7 but supports all Cannon cameras on which CCAPI is supported. 
+
+Currently based heavily on [canon-r7-ccapi](https://github.com/laszewsk/canon-r7-ccapi) by laszewsk
+
+
+This program is not just for the R5 but supports all Cannon cameras on which CCAPI is supported. 
 
 ## The problem
 
-Many people noticed that the regular EOS Utility program has issues
-on M1/M2 Macs. This happens only via WiFi. The USB connection works fine.
-However, we like to be able to access the Cannon cameras via WiFi read-on.
-Furthermore, not all features are supported on Android apps interfacing with 
-the canon camera so this is unfortunately yet not an option.
-I use it to control focus bracketing from a computer.
+The aim is to make a more modern web tech based version of [Mote Light Painting](https://github.com/EduMake/mote_light_painting )
+
+It will provide :
+* a webserver for [LightPaintingPlasmaStick2040W](https://github.com/stretchyboy/LightPaintingPlasmaStick2040W) where images and patterns to light paint can be made available to the stick via api.
+* triggering of the camera to take the pictures (probably from a button on the stick / api in this app)
+* audible timing
+* downloading of the images and creation of animations
+
+
+## Compatibility 
 
 Please note this only works for the models as documented at
 * https://developers.canon-europe.com/developers/s/article/Latest-CCAPI
