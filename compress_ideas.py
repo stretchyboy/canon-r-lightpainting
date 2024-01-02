@@ -67,6 +67,8 @@ class StickFramePlayer():
             return self.getNextColumn_VertOfHoriRle()
         elif self.compressionType == 'HoriOfVert':
             return self.getNextColumn_HoriOfVert()
+        elif self.compressionType == 'HoriOfVertRle':
+            return self.getNextColumn_HoriOfVertRle()
         elif self.compressionType == 'HoriRleOfVert':
             return self.getNextColumn_HoriRleOfVert()
         elif self.compressionType == 'HoriRleOfVertRle':
@@ -112,6 +114,17 @@ class StickFramePlayer():
             if x >= self.width:
                 break
 
+    def getNextColumn_HoriOfVertRle(self):
+        decoding = self.compressed
+        col = []
+        x = 0
+        
+        while True:
+            col = RLE.decode(decoding[x][0], decoding[x][1])
+            yield col
+            x += 1
+            if x >= self.width:
+                break
 
     def getNextColumn_HoriRleOfVert(self):
         decoding = self.compressed
@@ -267,7 +280,7 @@ class StickFrame(StickFramePlayer):
         sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
 
         self.compressionType = sortedMethods[0][0]
-        if(self.compressionType in ["HoriOfVert", "HoriRleOfVert", "HoriOfVertRle"]):
+        if(self.compressionType in ["HoriRleOfVert", "HoriOfVertRle"]):
             print(name, "compressed with ", self.compressionType)
         
         self.compressed = sortedMethods[0][1]
@@ -494,6 +507,7 @@ files = [
     "../country-flags/png1000px/kr.png",
     "images/Rainbow-gradient-fully-saturated.svg.png",
     "images/Photo.jpg",
+    "images/rainbow2.jpg",
 ]
 
 for filename in files:
