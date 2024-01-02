@@ -17,7 +17,7 @@ DATASTORE = "store/"
 np.set_printoptions(threshold=sys.maxsize)
 
 class StickFramePlayer():
-    compressionType = "RowsRLEofColsRLE"
+    compressionType = "VertRleOfHoriRle"
     compressed = None
     height = 144
     width = None
@@ -59,12 +59,114 @@ class StickFramePlayer():
         ourPalette =  data['ourPalette']
 
     def getNextColumn(self):
-        if self.compressionType == 'RowsRLEofColsRLE':
-            return self.getNextColumn_RowsRLEofColsRLE()
-    
-    def getNextColumn_RowsRLEofColsRLE(self):
-        decoding = RLE.decode(self.compressed[0], self.compressed[1])
+        if self.compressionType == 'VertRleOfHoriRle':
+            return self.getNextColumn_VertRleOfHoriRle()
+        elif self.compressionType == 'VertRleOfHori':
+            return self.getNextColumn_VertRleOfHori()
+        elif self.compressionType == 'VertOfHoriRle':
+            return self.getNextColumn_VertOfHoriRle()
+        elif self.compressionType == 'HoriOfVert':
+            return self.getNextColumn_HoriOfVert()
+        elif self.compressionType == 'HoriRleOfVert':
+            return self.getNextColumn_HoriRleOfVert()
+        elif self.compressionType == 'HoriRleOfVertRle':
+            return self.getNextColumn_HoriRleOfVertRle()
+        else:
+            raise Exception("Decompressing "+ self.compressionType +" not implemented")
+
+
+    def getNextColumn_HoriRleOfVertRle(self):
+        decoding = self.compressed
+        col = []
+        index = 0
+        remaining = None
+        col = RLE.decode(decoding[0][0][0], decoding[0][0][1])
         
+        remaining = decoding[1][0]-1
+        yield col
+        
+        j = 1
+        
+        while True:
+            if remaining == 0:
+                index += 1
+                col = RLE.decode(decoding[0][index][0], decoding[0][index][1])
+                remaining = decoding[1][index]-1
+            else:
+                remaining -= 1
+            yield col
+            j += 1
+            if j >= self.width:
+                break
+    
+
+    def getNextColumn_HoriRleOfVert(self):
+        decoding = self.compressed
+        col = []
+        index = 0
+        remaining = None
+        col = decoding[0][0]
+        remaining = decoding[1][0]-1
+        yield col
+        
+        j = 1
+        
+        while True:
+            if remaining == 0:
+                index += 1
+                col = decoding[0][index]
+                remaining = decoding[1][index]-1
+            else:
+                remaining -= 1
+            yield col
+            j += 1
+            if j >= self.width:
+                break
+
+    def getNextColumn_VertOfHoriRle(self):
+        decoding = self.compressed
+        col = []
+        indexes = []
+        remaining = []
+        
+        for y in range(self.height): #values, counts
+            indexes.append(0)
+            col.append(decoding[y][0][0])
+            remaining.append(decoding[y][1][0]-1)
+        yield col
+        
+        i = 1
+        
+        while True:
+            for y in range(self.height): #values, counts
+                if remaining[y] == 0:
+                    indexes[y] += 1
+                    col[y] = decoding[y][0][indexes[y]]
+                    remaining[y] = decoding[y][1][indexes[y]]-1
+                else:
+                    remaining[y] -= 1
+            yield col
+            i += 1
+            if i >= self.width:
+                break
+    
+
+    def getNextColumn_VertRleOfHori(self):
+        decoding = RLE.decode(self.compressed[0], self.compressed[1])
+        col = [0] * self.height         
+        i = 0
+        
+        while True:
+            for y in range(self.height): #values, counts
+                col[y] = decoding[y][i]
+            yield col
+            i += 1
+            if i >= self.width:
+                break
+    
+
+    def getNextColumn_VertRleOfHoriRle(self):
+        decoding = RLE.decode(self.compressed[0], self.compressed[1])
         col = []
         indexes = []
         remaining = []
@@ -135,36 +237,23 @@ class StickFrame(StickFramePlayer):
         self.width = self.im.width
     
     #Priority
-    # 1 / 2 colour images
-    # 256 palette vertical and horizontal 
-
-    ## ideas and maybe we check which is smallest for an image and use that
-    # rle up the column
-    
-    # rle left to right counting of each item as we go
-    # rle left to right building each group as we read it and popping off the top of the mini lists
-    # rle left to right (either of the above) but with start column first then length and change arrays played separately
-    # First column then changes so fourth col has [(0, 255),(1,0)] changing row 0 to 255 and row 1 to 0 and changing nothing else 
-    # changes up form initial row( very unlikely to be good but occasionally my work)
-    # just rotated and palletized
-    # just rotated but in small enough bits that it doesn't kill everything 
-    # some algorithms actually probably not because the choice of horizontal or vert rle / changes would do it 
+    ## Check which is smallest for an image and use that
     def compress(self):
-        RowsRLEofColsRLE = self.compress_RowsRLEofColsRLE()
-
         methods = [
-            ["RowsRLEofColsRLE" , self.compress_RowsRLEofColsRLE()],
-            ["RowsRLEofCols" , self.compress_RowsRLEofCols()],
-            ["RowsofColsRLE" , self.compress_RowsofColsRLE()],
+            ["VertRleOfHoriRle" , self.compress_VertRleOfHoriRle()],
+            ["VertRleOfHori" , self.compress_VertRleOfHori()],
+            ["VertOfHoriRle" , self.compress_VertOfHoriRle()],
+            ["HoriOfVert" , self.compress_HoriOfVert()],
+            ["HoriRleOfVert" , self.compress_HoriRleOfVert()],
+            ["HoriRleOfVertRle" , self.compress_HoriRleOfVertRle()],
+            ["HoriOfVertRle" , self.compress_HoriOfVertRle()],
         ]
 
         sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
 
-        print(self.name,  "sortedMethods", sortedMethods[0][0])
-
-        print("self.dat", type(self.dat))
-
-        self.compressed = RowsRLEofColsRLE
+        self.compressionType = sortedMethods[0][0]
+        print(name, "compressed with ", self.compressionType)
+        self.compressed = sortedMethods[0][1]
 
         return self.compressed
        
@@ -173,35 +262,74 @@ class StickFrame(StickFramePlayer):
         # https://docs.python.org/3.5/library/struct.html#module-struct
         # https://docs.micropython.org/en/latest/library/struct.html
 
-        
-    def compress_RowsRLEofColsRLE(self):
-        lines = []
-        for x in self.dat:
-            rle = RLE.encode(x)
-            lines.append(rle)
-        out = RLE.encode(lines)
+
+    def compress_HoriOfVertRle(self):
+        cols = []
+        for col in self.dat.T:
+            cols.append(RLE.encode(col.tolist()))
+        out = cols
+        if self.debug:
+            print(self.name, "HoriOfVertRle", len(pickle.dumps(out)))
+        return out
+
+
+    def compress_HoriRleOfVertRle(self):
+        cols = []
+        for col in self.dat.T:
+            cols.append(RLE.encode(col.tolist()))
+        out = RLE.encode(cols)
+        if self.debug:
+            print(self.name, "HoriRleOfVertRle", out, len(pickle.dumps(out)))
+        return out
+
+    def compress_HoriRleOfVert(self):
+        cols = []
+        for col in self.dat.T:
+            cols.append(list(col))
+        out = RLE.encode(cols)
+        if self.debug:
+            print(self.name, "HoriRleOfVert", len(pickle.dumps(out)))
         return out
     
-    def compress_RowsofColsRLE(self):
+
+    def compress_HoriOfVert(self):
+        out = []
+        for col in self.dat.T:
+            out.append(col.tolist())
+
+        if self.debug:
+            print(self.name, "HoriOfVert", len(pickle.dumps(out)))
+        return out
+    
+        
+    def compress_VertRleOfHoriRle(self):
         lines = []
         for x in self.dat:
-            rle = RLE.encode(x)
+            rle = RLE.encode(x.tolist())
             lines.append(rle)
+        out = RLE.encode(lines)
+        if self.debug:
+            print(self.name, "VertRleOfHoriRle", len(pickle.dumps(out)))
+        return out
+    
+    def compress_VertOfHoriRle(self):
+        lines = []
+        for x in self.dat:
+            rle = RLE.encode(x.tolist())
+            lines.append(rle)
+        if self.debug:
+            print(self.name, "VertOfHoriRle", len(pickle.dumps(lines)))
         return lines
 
 
-    def compress_RowsRLEofCols(self):
+    def compress_VertRleOfHori(self):
         lines = []
         for x in self.dat:
-            lines.append(list(x))
+            lines.append(x.tolist())
         out = RLE.encode(lines)
+        if self.debug:
+            print(self.name, "VertRleOfHori", len(pickle.dumps(out)))
         return out
-    
-
-
-
-
-
 
         
     def uncompress(self):
@@ -355,8 +483,6 @@ for filename in files:
     with Image.open(filename) as im2:
         head, tail = os.path.split(filename)
         name, ext = os.path.splitext(tail)
-        
-        print(name)
 
         resizedFilename = outputPath+name+"_resized"+ext
         compressedFilename = outputPath+name+"_uncompressed"+ext
@@ -372,9 +498,6 @@ for filename in files:
 
         compressed = stick2.dumps()
         stick2.dump()
-
-        print("compressed len", len(compressed))
-
         stick2.uncompress()
 
         stick2.im.save(compressedFilename, compress_level=0)
