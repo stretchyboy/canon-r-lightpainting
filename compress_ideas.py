@@ -100,6 +100,19 @@ class StickFramePlayer():
                 break
     
 
+    def getNextColumn_HoriOfVert(self):
+        decoding = self.compressed
+        col = []
+        x = 0
+        
+        while True:
+            col = decoding[x]
+            yield col
+            x += 1
+            if x >= self.width:
+                break
+
+
     def getNextColumn_HoriRleOfVert(self):
         decoding = self.compressed
         col = []
@@ -122,6 +135,8 @@ class StickFramePlayer():
             j += 1
             if j >= self.width:
                 break
+
+
 
     def getNextColumn_VertOfHoriRle(self):
         decoding = self.compressed
@@ -252,7 +267,9 @@ class StickFrame(StickFramePlayer):
         sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
 
         self.compressionType = sortedMethods[0][0]
-        print(name, "compressed with ", self.compressionType)
+        if(self.compressionType in ["HoriOfVert", "HoriRleOfVert", "HoriOfVertRle"]):
+            print(name, "compressed with ", self.compressionType)
+        
         self.compressed = sortedMethods[0][1]
 
         return self.compressed
@@ -476,6 +493,7 @@ files = [
     "../country-flags/png1000px/lk.png",
     "../country-flags/png1000px/kr.png",
     "images/Rainbow-gradient-fully-saturated.svg.png",
+    "images/Photo.jpg",
 ]
 
 for filename in files:
@@ -484,8 +502,8 @@ for filename in files:
         head, tail = os.path.split(filename)
         name, ext = os.path.splitext(tail)
 
-        resizedFilename = outputPath+name+"_resized"+ext
-        compressedFilename = outputPath+name+"_uncompressed"+ext
+        resizedFilename = outputPath+name+"_resized.png"
+        compressedFilename = outputPath+name+"_uncompressed.png"
 
         stick2 = StickFrame(im2)
         stick2.name=name
