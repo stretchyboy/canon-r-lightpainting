@@ -1,22 +1,97 @@
 import numpy as np
 import filecmp
 import sys
+import os
 import math
 from copy import deepcopy
 from PIL import Image, ImageDraw
+import rle as RLE
+from functools import reduce as _reduce
+from pathlib import Path
+import ujson as json
+import struct as struct
+import pickle
 
+DATASTORE = "store/"
 
 np.set_printoptions(threshold=sys.maxsize)
 
-
-class StickFrame() : 
-    im = None
-    dat = None
+class StickFramePlayer():
+    compressionType = "RowsRLEofColsRLE"
     compressed = None
-    PILmode = None
     height = 144
     width = None
-    debug = True
+    heightCM = 100
+    widthCM = None
+    ourPalette = None
+    name="default"
+
+    def __init__(self, height = 144):
+        self.height = height
+        
+    def loads(self, sJSON):
+        data = pickle.loads(sJSON)
+        compressionType = data['compressionType']
+        compressed = data['compressed']
+        height = data['height']
+        width =  data['width']
+        heightCM =  data['heightCM']
+        widthCM =  data['widthCM']
+        ourPalette =  data['ourPalette']
+    
+    @property
+    def filename(self):
+        return DATASTORE + self.name+".pkl"
+    
+    def load(self, name = None):
+        if(name):
+            self.name = name
+
+        file = open(self.filename, 'rb')
+
+        data = pickle.load(file)
+        compressionType = data['compressionType']
+        compressed = data['compressed']
+        height = data['height']
+        width =  data['width']
+        heightCM =  data['heightCM']
+        widthCM =  data['widthCM']
+        ourPalette =  data['ourPalette']
+
+    def getNextColumn(self):
+        if self.compressionType == 'RowsRLEofColsRLE':
+            return self.getNextColumn_RowsRLEofColsRLE()
+    
+    def getNextColumn_RowsRLEofColsRLE(self):
+        decoding = RLE.decode(self.compressed[0], self.compressed[1])
+        
+        col = []
+        indexes = []
+        remaining = []
+        
+        for y in range(self.height): #values, counts
+            indexes.append(0)
+            col.append(decoding[y][0][0])
+            remaining.append(decoding[y][1][0]-1)
+        yield col
+        
+        i = 1
+        
+        while True:
+            for y in range(self.height): #values, counts
+                if remaining[y] == 0:
+                    indexes[y] += 1
+                    col[y] = decoding[y][0][indexes[y]]
+                    remaining[y] = decoding[y][1][indexes[y]]-1
+                else:
+                    remaining[y] -= 1
+            yield col
+            i += 1
+            if i >= self.width:
+                break
+    
+
+class StickFrame(StickFramePlayer): 
     '''
     +String stickImageFilename
     StickFrame : +Int frameNumber
@@ -25,6 +100,11 @@ class StickFrame() :
     StickFrame : +analyse()
     '''
 
+    im = None
+    dat = None
+    PILmode = None
+    debug = False
+    
     def __init__(self, im = None, height = 144):
         self.height = height
         if im:
@@ -32,14 +112,14 @@ class StickFrame() :
             
     def setImage(self, im):
         self.im = im.quantize(dither = Image.NONE)
-        self.bitdepth = int(round(math.log2(len(self.im.getcolors())),0))
-        self.ourPalette = self.im.getpalette()[:3*pow(2,self.bitdepth)]
+        self.bitDepth = int(round(math.log2(len(self.im.getcolors())),0))
+        self.ourPalette = self.im.getpalette()[:3*pow(2,self.bitDepth)]
         self.resizeImage()
         if(self.debug):
             print("Total", self.width * self.height)
             print(self.__class__.__name__, "Palette", self.ourPalette)#self.im.getpalette())
             #print(self.__class__.__name__, "Palette2", self.im.palette.tostring())
-            #print(self.__class__.__name__, "bitdepth",self.bitdepth, "getcolors", self.im.getcolors())
+            #print(self.__class__.__name__, "bitDepth",self.bitDepth, "getcolors", self.im.getcolors())
         
     def resizeImage(self):
         ratio = self.height / self.im.height    
@@ -47,91 +127,125 @@ class StickFrame() :
         if(self.debug):
             print(self.__class__.__name__, "im.width", self.im.width, "im.height", self.im.height, "ratio", ratio, "width", self.width, "height", self.height)
         self.im = self.im.resize((self.width, self.height))
-        # TODO : resize before saving
         self.PILmode = deepcopy(self.im.mode)
         
         self.size = self.im.size
         self.dat = np.asarray(self.im)
+                        
         self.width = self.im.width
-
-    def compress_cell(self, cell):
-        return cell 
-    
-    def upcompress_cell(self, item):
-        cell = item
-        return cell 
     
     #Priority
     # 1 / 2 colour images
-    # 256 pallette vertical and horizontal 
+    # 256 palette vertical and horizontal 
 
     ## ideas and maybe we check which is smallest for an image and use that
     # rle up the column
     
     # rle left to right counting of each item as we go
-    # rle left to right building each group as we read it and poping off the top of the mini lists
-    # rle left to right (either of the above) but with start column first then length and change arrays played seperately
+    # rle left to right building each group as we read it and popping off the top of the mini lists
+    # rle left to right (either of the above) but with start column first then length and change arrays played separately
     # First column then changes so fourth col has [(0, 255),(1,0)] changing row 0 to 255 and row 1 to 0 and changing nothing else 
-    # changes up form initial row( very unlikely to be good but accaisonnly my work)
+    # changes up form initial row( very unlikely to be good but occasionally my work)
     # just rotated and palletized
     # just rotated but in small enough bits that it doesn't kill everything 
-    # some algorythms actualy proabably not because the chouse of hori or vert rle / changes would do it 
+    # some algorithms actually probably not because the choice of horizontal or vert rle / changes would do it 
     def compress(self):
-        out = []
+        RowsRLEofColsRLE = self.compress_RowsRLEofColsRLE()
+
+        methods = [
+            ["RowsRLEofColsRLE" , self.compress_RowsRLEofColsRLE()],
+            ["RowsRLEofCols" , self.compress_RowsRLEofCols()],
+            ["RowsofColsRLE" , self.compress_RowsofColsRLE()],
+        ]
+
+        sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
+
+        print(self.name,  "sortedMethods", sortedMethods[0][0])
+
+        print("self.dat", type(self.dat))
+
+        self.compressed = RowsRLEofColsRLE
+
+        return self.compressed
+       
+        # TODO? : Max out the length to 255 and spread
+        # TODO? : Make it a byte array
+        # https://docs.python.org/3.5/library/struct.html#module-struct
+        # https://docs.micropython.org/en/latest/library/struct.html
+
+        
+    def compress_RowsRLEofColsRLE(self):
+        lines = []
         for x in self.dat:
-            pos, = np.where(np.diff(x) != 0)
-            pos = np.concatenate(([0],pos+1,[len(x)]))
-            rle = [(b-a,x[a]) for (a,b) in zip(pos[:-1],pos[1:])]
-
-            # TODO : max out the length to 255 and spread
-            # TODO : Make it a byte array
-            # https://docs.python.org/3.5/library/struct.html#module-struct
-            # https://docs.micropython.org/en/latest/library/struct.html
-
-            out.append(rle)
-        print("compress out", out)
-        self.compressed = out
+            rle = RLE.encode(x)
+            lines.append(rle)
+        out = RLE.encode(lines)
         return out
     
-    def getNextColumn(self):
-        return []
-        pass
+    def compress_RowsofColsRLE(self):
+        lines = []
+        for x in self.dat:
+            rle = RLE.encode(x)
+            lines.append(rle)
+        return lines
 
+
+    def compress_RowsRLEofCols(self):
+        lines = []
+        for x in self.dat:
+            lines.append(list(x))
+        out = RLE.encode(lines)
+        return out
+    
+
+
+
+
+
+
+        
     def uncompress(self):
         x = 0
         self.im = Image.new(self.PILmode, self.size, color=0)
+        if self.PILmode == "P":
+            self.im.putpalette(self.ourPalette) 
         for col in self.getNextColumn():
-            #print("returned col", x, col)
             for y in range(len(col)):
                 self.dat[y][x] = deepcopy(col[y])
-                #print("self.dat[",y,"][",x,"]", self.dat[y][x])
                 self.im.putpixel((x,y), int(self.dat[y][x]) )
             x += 1 
         
 
-    def save(self):
-        #print("self.dat", self.dat)
-        #print("self.PILmode", self.PILmode)
-        #self.im = Image.fromarray(self.dat, mode=self.PILmode)
-        pass
+    def dumps(self):
+        data = {
+            "compressionType": self.compressionType,
+            "compressed": self.compressed,
+            "height": self.height,
+            "width": self.width,
+            "heightCM": self.heightCM,
+            "widthCM": self.widthCM,
+            "ourPalette": self.ourPalette
+        }
+        return pickle.dumps(data)
         
+    def dump(self):
         
-    def load(self):
-        pass
+        file = open(self.filename, 'wb')
+        data = {
+            "compressionType": self.compressionType,
+            "compressed": self.compressed,
+            "height": self.height,
+            "width": self.width,
+            "heightCM": self.heightCM,
+            "widthCM": self.widthCM,
+            "ourPalette": self.ourPalette
+        }
+        return pickle.dump(data, file)
+
     
 
-
-class StickFramePalleted(StickFrame):
-
-    '''
-    StickFramePalleted : +List~int~ pallete
-    StickFramePalleted : +colourDepth
-    StickFramePalleted : +compress()
-    StickFramePalleted : +getNextColumn()
-    '''
-
-
-class StickFrame1bit(StickFramePalleted):
+class StickFrame1bit(StickFrame):
+    ourPalette = [0,0,0,255,255,255]
     def setImage(self, im):
         self.im = im
         self.resizeImage()
@@ -177,64 +291,6 @@ class StickFrame1bit(StickFramePalleted):
             if i >= self.width:
                 break
 
-    
-    '''
-    def getNextColumn(self):
-        i = 0
-        compressedlinepos = []
-        eleremaining = []
-        col = []
-        ended = 0
-        for y in range(len(self.compressed)):
-            if self.compressed[y][i] == 0 :
-                compressedlinepos.append(1)
-                if(len(self.compressed[y]) >= i):
-                   eleremaining.append(self.compressed[y][i+1])
-                else:
-                    eleremaining.append(0)
-                col.append(False)
-            else:
-                compressedlinepos.append(0)
-                eleremaining.append(self.compressed[y][i]-1)
-                col.append(True)
-        #print("First col", col)
-        yield col
-        i += 1
-        # An Infinite loop to generate squares
-        while True:
-            for y in range(len(self.compressed)):
-                if eleremaining[y] == 0:
-                    compressedlinepos[y] += 1
-                    col[y] = not col[y]
-                    #print("len(self.compressed[",y,"]) > i", len(self.compressed[y]),  i)
-                    if(i +1 < len(self.compressed[y])):
-                        eleremaining[y] = self.compressed[y][i+1]
-                    else:
-                        eleremaining[y] = 0
-                        
-                else:
-                    eleremaining[y] -= 1
-            #if ended < 1:
-            #print("col", i, col)
-            yield col
-            i += 1  # Next execution resumes
-            if i >= self.width:
-                break
-
-    '''
-    
-    '''
-    StickFrame1bit : 
-    StickFrame1bit : +compress()
-    StickFrame1bit : +getNextColumn()
-
-    '''
-
-    '''
-    note for StickFrame1bit "Run Length Encoding\nhttps://tinyurl.com/2h54atwk"
-    note for StickFrame "https://www.geeksforgeeks.org/use-yield-keyword-instead-return-keyword-python/"
-    '''
-
 #from PIL import Image, ImageDraw
 
 im = Image.new("1", (10,144), color=0)
@@ -261,7 +317,8 @@ def list_list_eq(list1, list2):
     #print("comp list_list_eq", comp)
     return all(comp)
 
-im.save("test.png")
+outputPath = "output/"
+im.save(outputPath+"test.png", compress_level=0)
 
 stick = StickFrame1bit(im)
 
@@ -273,25 +330,60 @@ stick.uncompress()
 
 assert list_list_eq(data, stick.dat), "Compress Uncompress"
 
+stick.im.save(outputPath+"test2.png", compress_level=0)
 
-stick.save()
-stick.im.save("test2.png")
+assert filecmp.cmp(outputPath+"test.png", outputPath+"test2.png", shallow=True), "File comparison" 
+files = [
+    "../country-flags/png1000px/bl.png",
+    "../country-flags/png1000px/de.png",
+    "../country-flags/png1000px/lv.png",
+    "../country-flags/png1000px/ch.png",
+    "../country-flags/png1000px/gb.png",
+    "../country-flags/png1000px/eu.png",
+    "../country-flags/png1000px/ca.png",
 
-assert filecmp.cmp("test.png", "test2.png", shallow=True), "File comparision" 
+    "../country-flags/png1000px/af.png",
+    "../country-flags/png1000px/aq.png",
 
-with Image.open("../country-flags/png1000px/lv.png") as im2:
-    #"../country-flags/png1000px/de.png"
-    #"../country-flags/png1000px/ca.png"
-    #"../country-flags/png1000px/ch.png"
-    #"../country-flags/png1000px/eu.png"
-    stick2 = StickFrame(im2)
-    stick2.im.save("test3.png")
+    "../country-flags/png1000px/lk.png",
+    "../country-flags/png1000px/kr.png",
+    "images/Rainbow-gradient-fully-saturated.svg.png",
+]
 
-    data2 = deepcopy(stick2.dat)
-    assert list_list_eq(data2, stick2.dat), "2 Testing Deep copy"
+for filename in files:
 
-    stick2.compress() 
-    stick2.uncompress()
+    with Image.open(filename) as im2:
+        head, tail = os.path.split(filename)
+        name, ext = os.path.splitext(tail)
+        
+        print(name)
 
-    assert list_list_eq(data2, stick2.dat), "2 Compress Uncompress"
-    stick2.im.save("test4.png")
+        resizedFilename = outputPath+name+"_resized"+ext
+        compressedFilename = outputPath+name+"_uncompressed"+ext
+
+        stick2 = StickFrame(im2)
+        stick2.name=name
+        stick2.im.save(resizedFilename, compress_level=0)
+
+        data2 = deepcopy(stick2.dat)
+        assert list_list_eq(data2, stick2.dat), "Testing Deep Copy "+name
+
+        stick2.compress() 
+
+        compressed = stick2.dumps()
+        stick2.dump()
+
+        print("compressed len", len(compressed))
+
+        stick2.uncompress()
+
+        stick2.im.save(compressedFilename, compress_level=0)
+        assert list_list_eq(data2, stick2.dat), "Compress Uncompress "+name
+
+        ministick = StickFramePlayer()
+        #ministick.loads(compressed)
+        ministick.load(name)
+        
+        #print("ministick.getNextColumn()", ministick.getNextColumn())
+
+        #assert filecmp.cmp(resizedFilename, compressedFilename, shallow=True), "File Comparison " + resizedFilename + " " + compressedFilename 
