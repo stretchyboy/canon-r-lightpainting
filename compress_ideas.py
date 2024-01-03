@@ -5,220 +5,14 @@ import os
 import math
 from copy import deepcopy
 from PIL import Image, ImageDraw
-import rle as RLE
+#import rle as RLE
+from rle import encode as rle_encode
 from functools import reduce as _reduce
 from pathlib import Path
-import ujson as json
-import struct as struct
 import pickle
-
-DATASTORE = "store/"
+from stickframeplayer import StickFramePlayer
 
 np.set_printoptions(threshold=sys.maxsize)
-
-class StickFramePlayer():
-    compressionType = "VertRleOfHoriRle"
-    compressed = None
-    height = 144
-    width = None
-    heightCM = 100
-    widthCM = None
-    ourPalette = None
-    name="default"
-
-    def __init__(self, height = 144):
-        self.height = height
-        
-    def loads(self, sJSON):
-        data = pickle.loads(sJSON)
-        compressionType = data['compressionType']
-        compressed = data['compressed']
-        height = data['height']
-        width =  data['width']
-        heightCM =  data['heightCM']
-        widthCM =  data['widthCM']
-        ourPalette =  data['ourPalette']
-    
-    @property
-    def filename(self):
-        return DATASTORE + self.name+".pkl"
-    
-    def load(self, name = None):
-        if(name):
-            self.name = name
-
-        file = open(self.filename, 'rb')
-
-        data = pickle.load(file)
-        compressionType = data['compressionType']
-        compressed = data['compressed']
-        height = data['height']
-        width =  data['width']
-        heightCM =  data['heightCM']
-        widthCM =  data['widthCM']
-        ourPalette =  data['ourPalette']
-
-    def getNextColumn(self):
-        if self.compressionType == 'VertRleOfHoriRle':
-            return self.getNextColumn_VertRleOfHoriRle()
-        elif self.compressionType == 'VertRleOfHori':
-            return self.getNextColumn_VertRleOfHori()
-        elif self.compressionType == 'VertOfHoriRle':
-            return self.getNextColumn_VertOfHoriRle()
-        elif self.compressionType == 'HoriOfVert':
-            return self.getNextColumn_HoriOfVert()
-        elif self.compressionType == 'HoriOfVertRle':
-            return self.getNextColumn_HoriOfVertRle()
-        elif self.compressionType == 'HoriRleOfVert':
-            return self.getNextColumn_HoriRleOfVert()
-        elif self.compressionType == 'HoriRleOfVertRle':
-            return self.getNextColumn_HoriRleOfVertRle()
-        else:
-            raise Exception("Decompressing "+ self.compressionType +" not implemented")
-
-
-    def getNextColumn_HoriRleOfVertRle(self):
-        decoding = self.compressed
-        col = []
-        index = 0
-        remaining = None
-        col = RLE.decode(decoding[0][0][0], decoding[0][0][1])
-        
-        remaining = decoding[1][0]-1
-        yield col
-        
-        j = 1
-        
-        while True:
-            if remaining == 0:
-                index += 1
-                col = RLE.decode(decoding[0][index][0], decoding[0][index][1])
-                remaining = decoding[1][index]-1
-            else:
-                remaining -= 1
-            yield col
-            j += 1
-            if j >= self.width:
-                break
-    
-
-    def getNextColumn_HoriOfVert(self):
-        decoding = self.compressed
-        col = []
-        x = 0
-        
-        while True:
-            col = decoding[x]
-            yield col
-            x += 1
-            if x >= self.width:
-                break
-
-    def getNextColumn_HoriOfVertRle(self):
-        decoding = self.compressed
-        col = []
-        x = 0
-        
-        while True:
-            col = RLE.decode(decoding[x][0], decoding[x][1])
-            yield col
-            x += 1
-            if x >= self.width:
-                break
-
-    def getNextColumn_HoriRleOfVert(self):
-        decoding = self.compressed
-        col = []
-        index = 0
-        remaining = None
-        col = decoding[0][0]
-        remaining = decoding[1][0]-1
-        yield col
-        
-        j = 1
-        
-        while True:
-            if remaining == 0:
-                index += 1
-                col = decoding[0][index]
-                remaining = decoding[1][index]-1
-            else:
-                remaining -= 1
-            yield col
-            j += 1
-            if j >= self.width:
-                break
-
-
-
-    def getNextColumn_VertOfHoriRle(self):
-        decoding = self.compressed
-        col = []
-        indexes = []
-        remaining = []
-        
-        for y in range(self.height): #values, counts
-            indexes.append(0)
-            col.append(decoding[y][0][0])
-            remaining.append(decoding[y][1][0]-1)
-        yield col
-        
-        i = 1
-        
-        while True:
-            for y in range(self.height): #values, counts
-                if remaining[y] == 0:
-                    indexes[y] += 1
-                    col[y] = decoding[y][0][indexes[y]]
-                    remaining[y] = decoding[y][1][indexes[y]]-1
-                else:
-                    remaining[y] -= 1
-            yield col
-            i += 1
-            if i >= self.width:
-                break
-    
-
-    def getNextColumn_VertRleOfHori(self):
-        decoding = RLE.decode(self.compressed[0], self.compressed[1])
-        col = [0] * self.height         
-        i = 0
-        
-        while True:
-            for y in range(self.height): #values, counts
-                col[y] = decoding[y][i]
-            yield col
-            i += 1
-            if i >= self.width:
-                break
-    
-
-    def getNextColumn_VertRleOfHoriRle(self):
-        decoding = RLE.decode(self.compressed[0], self.compressed[1])
-        col = []
-        indexes = []
-        remaining = []
-        
-        for y in range(self.height): #values, counts
-            indexes.append(0)
-            col.append(decoding[y][0][0])
-            remaining.append(decoding[y][1][0]-1)
-        yield col
-        
-        i = 1
-        
-        while True:
-            for y in range(self.height): #values, counts
-                if remaining[y] == 0:
-                    indexes[y] += 1
-                    col[y] = decoding[y][0][indexes[y]]
-                    remaining[y] = decoding[y][1][indexes[y]]-1
-                else:
-                    remaining[y] -= 1
-            yield col
-            i += 1
-            if i >= self.width:
-                break
     
 
 class StickFrame(StickFramePlayer): 
@@ -296,7 +90,7 @@ class StickFrame(StickFramePlayer):
     def compress_HoriOfVertRle(self):
         cols = []
         for col in self.dat.T:
-            cols.append(RLE.encode(col.tolist()))
+            cols.append(rle_encode(col.tolist()))
         out = cols
         if self.debug:
             print(self.name, "HoriOfVertRle", len(pickle.dumps(out)))
@@ -306,8 +100,8 @@ class StickFrame(StickFramePlayer):
     def compress_HoriRleOfVertRle(self):
         cols = []
         for col in self.dat.T:
-            cols.append(RLE.encode(col.tolist()))
-        out = RLE.encode(cols)
+            cols.append(rle_encode(col.tolist()))
+        out = rle_encode(cols)
         if self.debug:
             print(self.name, "HoriRleOfVertRle", out, len(pickle.dumps(out)))
         return out
@@ -316,7 +110,7 @@ class StickFrame(StickFramePlayer):
         cols = []
         for col in self.dat.T:
             cols.append(list(col))
-        out = RLE.encode(cols)
+        out = rle_encode(cols)
         if self.debug:
             print(self.name, "HoriRleOfVert", len(pickle.dumps(out)))
         return out
@@ -335,9 +129,9 @@ class StickFrame(StickFramePlayer):
     def compress_VertRleOfHoriRle(self):
         lines = []
         for x in self.dat:
-            rle = RLE.encode(x.tolist())
+            rle = rle_encode(x.tolist())
             lines.append(rle)
-        out = RLE.encode(lines)
+        out = rle_encode(lines)
         if self.debug:
             print(self.name, "VertRleOfHoriRle", len(pickle.dumps(out)))
         return out
@@ -345,7 +139,7 @@ class StickFrame(StickFramePlayer):
     def compress_VertOfHoriRle(self):
         lines = []
         for x in self.dat:
-            rle = RLE.encode(x.tolist())
+            rle = rle_encode(x.tolist())
             lines.append(rle)
         if self.debug:
             print(self.name, "VertOfHoriRle", len(pickle.dumps(lines)))
@@ -356,7 +150,7 @@ class StickFrame(StickFramePlayer):
         lines = []
         for x in self.dat:
             lines.append(x.tolist())
-        out = RLE.encode(lines)
+        out = rle_encode(lines)
         if self.debug:
             print(self.name, "VertRleOfHori", len(pickle.dumps(out)))
         return out
