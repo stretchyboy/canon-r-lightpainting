@@ -266,7 +266,7 @@ class StickFrame(StickFramePlayer):
     
     #Priority
     ## Check which is smallest for an image and use that
-    def compress(self):
+    def compress(self, compressionType = None):
         methods = [
             ["VertRleOfHoriRle" , self.compress_VertRleOfHoriRle()],
             ["VertRleOfHori" , self.compress_VertRleOfHori()],
@@ -277,12 +277,12 @@ class StickFrame(StickFramePlayer):
             ["HoriOfVertRle" , self.compress_HoriOfVertRle()],
         ]
 
+        if compressionType:
+            methods = filter(lambda x:x[0]==compressionType, methods)
+        
         sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
 
         self.compressionType = sortedMethods[0][0]
-        if(self.compressionType in ["HoriRleOfVert", "HoriOfVertRle"]):
-            print(name, "compressed with ", self.compressionType)
-        
         self.compressed = sortedMethods[0][1]
 
         return self.compressed
@@ -526,8 +526,8 @@ for filename in files:
         data2 = deepcopy(stick2.dat)
         assert list_list_eq(data2, stick2.dat), "Testing Deep Copy "+name
 
-        stick2.compress() 
-
+        stick2.compress()
+        
         compressed = stick2.dumps()
         stick2.dump()
         stick2.uncompress()
