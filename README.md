@@ -4,7 +4,7 @@
 Currently based heavily on [canon-r7-ccapi](https://github.com/laszewsk/canon-r7-ccapi) by laszewsk
 
 
-This program is not just for the R5 but supports all Cannon cameras on which CCAPI is supported. 
+This program is not just for the R6 but supports all Cannon cameras on which CCAPI is supported. 
 
 ## The problem
 
@@ -12,9 +12,13 @@ The aim is to make a more modern web tech based version of [Mote Light Painting]
 
 It will provide :
 * a webserver for [LightPaintingPlasmaStick2040W](https://github.com/stretchyboy/LightPaintingPlasmaStick2040W) where images and patterns to light paint can be made available to the stick via api.
+* webserver on the [LightPaintingPlasmaStick2040W](https://github.com/stretchyboy/LightPaintingPlasmaStick2040W) to give the commands to the stick
 * triggering of the camera to take the pictures (probably from a button on the stick / api in this app)
 * audible timing
 * downloading of the images and creation of animations
+
+![First decent image with the new stick](/images/Union%20Flag%20Output.jpeg "Union Flag Rendered with main.py running on the PlasmaStick2040W")
+
 
 
 ## Compatibility 
