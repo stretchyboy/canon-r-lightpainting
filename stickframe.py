@@ -64,12 +64,16 @@ class StickFrame(StickFramePlayer):
         if(self.debug):
             print(self.__class__.__name__, "im.width", self.im.width, "im.height", self.im.height, "ratio", ratio, "width", self.width, "height", self.height)
         self.im = self.im.resize((self.width, self.height))
-        self.PILmode = deepcopy(self.im.mode)
         
-        self.size = self.im.size
+        
+        #self.size = self.im.size
         self.dat = np.asarray(self.im)
                         
         self.width = self.im.width
+    
+    @property
+    def size(self):
+        return (self.width, self.height)
     
     #Priority
     ## Check which is smallest for an image and use that
@@ -171,12 +175,12 @@ class StickFrame(StickFramePlayer):
         
     def uncompress(self):
         x = 0
-        self.im = Image.new(self.PILmode, self.size, color=0)
-        if self.PILmode == "P":
-            self.im.putpalette(self.ourPalette) 
+        self.dat = [[0]*self.width] * self.height
+        self.im = Image.new("P", self.size, color=0)
+        self.im.putpalette(self.ourPalette) 
         for col in self.getNextColumn():
             for y in range(len(col)):
-                self.dat[y][x] = deepcopy(col[y])
+                self.dat[y][x] = col[y]
                 self.im.putpixel((x,y), int(self.dat[y][x]) )
             x += 1 
         

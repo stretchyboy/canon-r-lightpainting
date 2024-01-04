@@ -32,22 +32,32 @@ class StickFramePlayer():
     height = 144
     width = None
     heightCM = 100
-    widthCM = None
     ourPalette = None
     name="default"
 
     def __init__(self, height = 144):
         self.height = height
-        
-    def loads(self, sJSON):
-        data = json.loads(sJSON)
+
+    def _loads(self, data):
         self.compressionType = data['compressionType']
         self.compressed = data['compressed']
         self.height = data['height']
         self.width =  data['width']
         self.heightCM =  data['heightCM']
-        self.widthCM =  data['widthCM']
         self.ourPalette =  data['ourPalette']
+    
+    def loadJson(self, data):
+        self._loads(data)
+    
+    def loads(self, sJSON):
+        data = json.loads(sJSON)
+        self._loads(data)
+
+    @property
+    def widthCM(self):
+        if self.width:
+            return int(self.width * (self.heightCM / self.height))
+        return 10
     
     @property
     def filename(self):
@@ -58,16 +68,9 @@ class StickFramePlayer():
             self.name = name
 
         file = open(self.filename, 'r')
-
         data = json.load(file)
-        self.compressionType = data['compressionType']
-        self.compressed = data['compressed']
-        self.height = data['height']
-        self.width =  data['width']
-        self.heightCM =  data['heightCM']
-        self.widthCM =  data['widthCM']
-        self.ourPalette =  data['ourPalette']
-        
+        self._loads(data)
+
     def getNextColumn(self):
         if self.compressionType == 'VertRleOfHoriRle':
             return self.getNextColumn_VertRleOfHoriRle()
