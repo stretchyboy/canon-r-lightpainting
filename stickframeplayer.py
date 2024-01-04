@@ -1,5 +1,5 @@
 from functools import reduce as _reduce
-import pickle
+import json
 
 DATASTORE = "store/"
 
@@ -40,34 +40,34 @@ class StickFramePlayer():
         self.height = height
         
     def loads(self, sJSON):
-        data = pickle.loads(sJSON)
-        compressionType = data['compressionType']
-        compressed = data['compressed']
-        height = data['height']
-        width =  data['width']
-        heightCM =  data['heightCM']
-        widthCM =  data['widthCM']
-        ourPalette =  data['ourPalette']
+        data = json.loads(sJSON)
+        self.compressionType = data['compressionType']
+        self.compressed = data['compressed']
+        self.height = data['height']
+        self.width =  data['width']
+        self.heightCM =  data['heightCM']
+        self.widthCM =  data['widthCM']
+        self.ourPalette =  data['ourPalette']
     
     @property
     def filename(self):
-        return DATASTORE + self.name+".pkl"
+        return DATASTORE + self.name+".json"
     
     def load(self, name = None):
         if(name):
             self.name = name
 
-        file = open(self.filename, 'rb')
+        file = open(self.filename, 'r')
 
-        data = pickle.load(file)
-        compressionType = data['compressionType']
-        compressed = data['compressed']
-        height = data['height']
-        width =  data['width']
-        heightCM =  data['heightCM']
-        widthCM =  data['widthCM']
-        ourPalette =  data['ourPalette']
-
+        data = json.load(file)
+        self.compressionType = data['compressionType']
+        self.compressed = data['compressed']
+        self.height = data['height']
+        self.width =  data['width']
+        self.heightCM =  data['heightCM']
+        self.widthCM =  data['widthCM']
+        self.ourPalette =  data['ourPalette']
+        
     def getNextColumn(self):
         if self.compressionType == 'VertRleOfHoriRle':
             return self.getNextColumn_VertRleOfHoriRle()

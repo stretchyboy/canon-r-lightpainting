@@ -7,10 +7,25 @@ from PIL import Image, ImageDraw
 from rle import encode as rle_encode
 from functools import reduce as _reduce
 from pathlib import Path
-import pickle
+import json
 from stickframeplayer import StickFramePlayer
 
 np.set_printoptions(threshold=sys.maxsize)
+    
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, (np.floating, np.complexfloating)):
+            return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.string_):
+            return str(obj)
+        return super(NpEncoder, self).default(obj)
     
 
 class StickFrame(StickFramePlayer): 
@@ -72,7 +87,7 @@ class StickFrame(StickFramePlayer):
         if compressionType:
             methods = filter(lambda x:x[0]==compressionType, methods)
         
-        sortedMethods = sorted(methods, key=lambda x:len(pickle.dumps(x[1])))
+        sortedMethods = sorted(methods, key=lambda x:len(json.dumps(x[1], cls=NpEncoder)))
 
         self.compressionType = sortedMethods[0][0]
         self.compressed = sortedMethods[0][1]
@@ -91,7 +106,7 @@ class StickFrame(StickFramePlayer):
             cols.append(rle_encode(col.tolist()))
         out = cols
         if self.debug:
-            print(self.name, "HoriOfVertRle", len(pickle.dumps(out)))
+            print(self.name, "HoriOfVertRle", len(json.dumps(out)))
         return out
 
 
@@ -101,7 +116,7 @@ class StickFrame(StickFramePlayer):
             cols.append(rle_encode(col.tolist()))
         out = rle_encode(cols)
         if self.debug:
-            print(self.name, "HoriRleOfVertRle", out, len(pickle.dumps(out)))
+            print(self.name, "HoriRleOfVertRle", out, len(json.dumps(out)))
         return out
 
     def compress_HoriRleOfVert(self):
@@ -110,7 +125,7 @@ class StickFrame(StickFramePlayer):
             cols.append(list(col))
         out = rle_encode(cols)
         if self.debug:
-            print(self.name, "HoriRleOfVert", len(pickle.dumps(out)))
+            print(self.name, "HoriRleOfVert", len(json.dumps(out)))
         return out
     
 
@@ -120,7 +135,7 @@ class StickFrame(StickFramePlayer):
             out.append(col.tolist())
 
         if self.debug:
-            print(self.name, "HoriOfVert", len(pickle.dumps(out)))
+            print(self.name, "HoriOfVert", len(json.dumps(out)))
         return out
     
         
@@ -131,7 +146,7 @@ class StickFrame(StickFramePlayer):
             lines.append(rle)
         out = rle_encode(lines)
         if self.debug:
-            print(self.name, "VertRleOfHoriRle", len(pickle.dumps(out)))
+            print(self.name, "VertRleOfHoriRle", len(json.dumps(out)))
         return out
     
     def compress_VertOfHoriRle(self):
@@ -140,7 +155,7 @@ class StickFrame(StickFramePlayer):
             rle = rle_encode(x.tolist())
             lines.append(rle)
         if self.debug:
-            print(self.name, "VertOfHoriRle", len(pickle.dumps(lines)))
+            print(self.name, "VertOfHoriRle", len(json.dumps(lines)))
         return lines
 
 
@@ -150,7 +165,7 @@ class StickFrame(StickFramePlayer):
             lines.append(x.tolist())
         out = rle_encode(lines)
         if self.debug:
-            print(self.name, "VertRleOfHori", len(pickle.dumps(out)))
+            print(self.name, "VertRleOfHori", len(json.dumps(out)))
         return out
 
         
@@ -176,11 +191,11 @@ class StickFrame(StickFramePlayer):
             "widthCM": self.widthCM,
             "ourPalette": self.ourPalette
         }
-        return pickle.dumps(data)
+        return json.dumps(data, cls=NpEncoder)
         
     def dump(self):
         
-        file = open(self.filename, 'wb')
+        file = open(self.filename, 'w')
         data = {
             "compressionType": self.compressionType,
             "compressed": self.compressed,
@@ -190,4 +205,4 @@ class StickFrame(StickFramePlayer):
             "widthCM": self.widthCM,
             "ourPalette": self.ourPalette
         }
-        return pickle.dump(data, file)
+        return json.dump(data, file, cls=NpEncoder)
