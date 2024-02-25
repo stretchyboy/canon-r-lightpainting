@@ -33,9 +33,7 @@ led_strip = plasma.WS2812(NUM_LEDS, 0, 0, plasma_stick.DAT, color_order=plasma.C
 
 # Start updating the LED strip
 led_strip.start()
-
 led_strip.clear()
-
 
 
 
@@ -55,6 +53,7 @@ async def stickframe_categories(categories):
     out = "\n".join(cats)
     return out
 '''
+
 def stickframe_categories(categories):
     out = ""
     for catname, anim in categories.items():
@@ -158,7 +157,6 @@ def load_store(request, filename):
 
 @server.route("/show/<duration>/store/<filename>", ["GET"])
 def show_store(request, duration, filename):
-    
     frameurl = "store/"+filename
     if "store" in cache:
         if cache["store"]['path'] == frameurl:
@@ -182,8 +180,15 @@ def show_store(request, duration, filename):
     led_strip.clear()
     return server.Response('{"success":1}', status=200, headers={"Content-Type":"application/json"})
 
-  
-
+@server.route("/sightingdots/<on>", methods=["GET"]) 
+def showSightingDots(request, on):
+    if int(on):
+        led_strip.set_rgb(0,255,255,255,10)
+        led_strip.set_rgb(NUM_LEDS-1,255,255,255,10)
+    else:
+        led_strip.clear()
+    return server.Response('{"success":1}', status=200, headers={"Content-Type":"application/json"})
+    
 @server.route("/", methods=["GET"])
 def index(request):
     j = await fetchCached(APIURL, "catergories", "data/categories.json")
