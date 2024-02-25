@@ -43,7 +43,7 @@ APIURL = "https://raw.githubusercontent.com/stretchyboy/lp-projects/main/"
 
 ip = connect_to_wifi(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
 info("ip", ip)
-CAMERAURL = "http://192.168.0.62:8080/ccapi"
+CAMERAURL = f"http://{secrets.CAMERAIP}:8080/ccapi"
 
 cache = {}
 
