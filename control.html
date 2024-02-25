@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<head>
+    <title>{{name}}</title>
+    <style>
+        body{
+            font-size: x-large;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{name}}</h1>
+    <form id="frameselect">
+        <div>
+            <label for="frame">Choose the frame to show:</label>
+            <select name="frame" id="frame">
+            {{render_frameoptions(items)}}
+            </select>
+        </div>
+
+        <div>
+            <label for="duration">Duration is seconds:</label>
+            <select name="duration" id="duration">
+            {{render_options(range(1,10), 5)}}
+            </select>
+        </div>
+
+
+        <div>
+            <label for="submit">Action:</label>
+            <input type="submit" id="submit" name="submit" value="Load" />
+        </div>
+    </form>
+    <div id="feedback">
+    </div>
+    <a href="/">Home</a>
+
+
+<script>
+const form = document.querySelector("#frameselect");
+const frame = document.querySelector("#frame");
+const submit = document.querySelector("#submit");
+const feedback = document.querySelector("#feedback");
+const body = document.querySelector("body");
+var loaded = ""
+var bConnected = false
+
+const CAMERAURL = "{{CAMERAURL}}"
+console.log("CAMERAURL value", CAMERAURL)
+async function sendData() {
+  // Associate the FormData object with the form element
+  const formData = new FormData(form);
+  //console.log("formData", formData)
+  if (loaded == ""){
+    feedback.innerHTML ="Loading"
+    try {
+        const response = await fetch("/load/"+formData.get("frame"), {
+        method: "GET",
+        // Set the FormData instance as the request body
+        });
+        const stickframe = await response.json();
+        feedback.innerHTML = "Loaded<br />Image is "+stickframe.widthCM+"cm wide"
+        submit.setAttribute("value", "Show")
+        loaded = formData.get("frame")
+    } catch (e) { 
+        unload("Load Failed")
+        console.error(e);
+    }
+  } else {
+    feedback.innerHTML = "Showing"
+    await sendShutter()
+    
+    body.style.backgroundColor = "black";
+    try {    
+        const response = await fetch("/show/"+formData.get("duration")+"/"+formData.get("frame"), {
+        method: "GET",
+        // Set the FormData instance as the request body
+        });
+        const showdata = await response.json();
+        feedback.innerHTML = "Shown"
+
+        await sendShutter("release")
+
+
+        body.style.backgroundColor = "white";
+    } catch (e) {
+        await sendShutter("release")
+        unload("Show Failed")
+        console.error(e);
+    }
+
+        
+  }
+}
+
+// Take over form submission
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendData();
+});
+
+frame.addEventListener("change", (event) => {
+    unload()
+});
+
+function unload(msg=""){
+    feedback.innerHTML = msg
+    loaded = ""
+    submit.setAttribute("value", "Load")
+    body.style.backgroundColor = "white";
+}
+
+async function sendConnect() {
+  // Associate the FormData object with the form element
+  try {
+        const response = await fetch(CAMERAURL, {
+        method: "GET",
+        mode:    "no-cors",
+        // Set the FormData instance as the request body
+        });
+        feedback.innerHTML = "Camera Connected"
+        bConnected = true
+    } catch (e) {
+        bConnected = false
+        unload("Camera Connect failed")
+        console.error(e);
+    }
+}
+
+async function sendShutter(action="full_press") { // ["full_press", "half_press", "release"]:
+  if (bConnected == false){
+    return
+  }
+  // Associate the FormData object with the form element
+  try {
+    feedback.innerHTML = "Shutter "+action
+    const data = {"af": false,
+                        "action": action
+                    }
+
+        const response = await fetch(CAMERAURL+"/ver100/shooting/control/shutterbutton/manual", {
+        mode:    "no-cors",
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                // 'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                redirect: "follow", // manual, *follow, error
+                referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+                body: JSON.stringify(data), 
+        });
+        feedback.innerHTML = "Shutter "+action+" done"
+    } catch (e) {
+        feedback.innerHTML = "Shutter "+action +" possible"
+        console.error(e);
+    }
+}
+
+document.addEventListener("readystatechange", (event) => {
+  console.log("sendConnect")
+  sendConnect();
+});
+
+    
+
+
+</script>
+
+
+</body>

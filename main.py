@@ -7,18 +7,17 @@
 #	WIFI_PASSWORD = "<password>"
 #
 # with your wifi details instead of <ssid> and <password>.
-
 from phew import server, connect_to_wifi
 from phew.template import render_template
-
+from phew.logging import *
+import json
 import secrets
-
-ip = connect_to_wifi(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
-
+import urequests
 import plasma
 from plasma import plasma_stick
 import time
 from stickframeplayer import StickFramePlayer
+
 
 # Set how many LEDs you have
 NUM_LEDS = 144
@@ -37,26 +36,141 @@ led_strip.start()
 
 led_strip.clear()
 
-print("ip", ip)
 
-# basic response with status code and content type
-@server.route("/basic", methods=["GET", "POST"])
-def basic(request):
-  return "Gosh, a request", 200, "text/html"
 
-# basic response with status code and content type
-@server.route("/status-code", methods=["GET", "POST"])
-def status_code(request):
-  return "Here, have a status code", 200, "text/html"
 
-# url parameter and template render
-@server.route("/hello/<name>", methods=["GET"])
-def hello(request, name):
+APIURL = "https://raw.githubusercontent.com/stretchyboy/lp-projects/main/"
 
-  ministick = StickFramePlayer()
-  ministick.load(name)
-  for col in ministick.getNextColumn():
-    for y in range(ministick.height):
+ip = connect_to_wifi(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
+info("ip", ip)
+CAMERAURL = "http://192.168.0.62:8080/ccapi"
+
+cache = {}
+
+       
+# TODO : show list of images from the server
+'''
+async def stickframe_categories(categories):
+    cats = [render_template("stickframe-category", name=name) for name, items in categories.items()]    
+    out = "\n".join(cats)
+    return out
+'''
+def stickframe_categories(categories):
+    out = ""
+    for catname, anim in categories.items():
+        cat = "<h2>"+catname+"</h2><ul>"
+        for animname, items in anim.items():
+            cat += "<li><a href='/show/"+catname+"/"+animname+"'>"+animname+"</a></li>"
+            
+        out += "</ul>\n"+cat
+    
+    return out
+
+async def fetchCached(base, fetchtype, path):
+    if fetchtype in cache:
+        if cache[fetchtype]['path'] == path:
+            info(">", 'Cache Used for', fetchtype, path)
+            return cache[fetchtype]['data']
+    cache[fetchtype] = {}
+    URL = base+path
+    info(f'Requesting URL: {URL}')
+    r = urequests.get(URL)
+    # open the json data
+    j = r.json()
+    info(">", fetchtype, 'Data obtained!', path)
+    r.close()
+    cache[fetchtype] = {
+        'path':path,
+        'data':j
+    }
+    return j
+
+def render_list(path, items):
+    return "\n".join([f'<li><a href="{path}{item}">{item}</a></li>' for item in items])
+
+def render_frameoptions(items, selected=0):
+    #info(">items",items)
+    #return "\n".join([f'<option value="{items[i]}" {"selected" if i==selected}>{i}</option>' for i in range(len(items))])
+    out = ''
+    for i in range(len(items)):
+        out += f'<option value="{items[i]}"'
+        if i==selected :
+            out += ' selected="selected" '
+        out += f'>Frame {i}</option>\n'
+    #info(">options",out)
+    return out
+
+def render_options(items, selected=0):
+    #info(">items",items)
+    #return "\n".join([f'<option value="{items[i]}" {"selected" if i==selected}>{i}</option>' for i in range(len(items))])
+    out = ''
+    for i in range(len(items)):
+        out += f'<option value="{items[i]}"'
+        if items[i]==selected :
+            out += ' selected="selected" '
+        out += f'>{items[i]}</option>\n'
+    #info(">options",out)
+    return out        
+
+@server.route("/categories/<cat>", methods=["GET"])
+def index(request, cat):
+    j = await fetchCached(APIURL, "category", f"data/categories/{cat}.json")    
+    cat = server.urldecode(cat)
+    
+    return await render_template("list.html", name=f"Category: {cat}", path=f"/categories/{cat}/anim/", items=j)
+    
+@server.route("/categories/<cat>/anim/<anim>", methods=["GET"])
+def index(request, cat, anim):
+    j = await fetchCached(APIURL, "anim", f"data/categories/{cat}/anim/{anim}.json")
+
+    cat = server.urldecode(cat)
+    anim = server.urldecode(anim)
+    
+    return await render_template(
+        "control.html",
+        name=f"Category: {cat} : Anim: {anim}",
+        path=f"/categories/{cat}/anim/",
+        items=j,
+        CAMERAURL = CAMERAURL 
+)
+
+@server.route("/load/store/<filename>", ["GET"])
+def load_store(request, filename):
+    frameurl = "store/"+filename
+    if "store" in cache:
+        if cache["store"]['path'] == frameurl:
+            info(">", 'Cache Used for "store"')
+            j = cache["store"]['data']
+            return server.Response(json.dumps(j), status=200, headers={"Content-Type":"application/json"})
+    
+    URL = APIURL+frameurl
+    info(f'Requesting URL: {URL}')
+    r = urequests.get(URL)
+    # open the json data
+    j = r.json()
+    #info("> Store Data obtained!", j)
+    r.close()
+    cache["store"] = {
+        'path':frameurl,
+        'data':j
+    }
+    return server.Response(json.dumps(j), status=200, headers={"Content-Type":"application/json"})
+
+@server.route("/show/<duration>/store/<filename>", ["GET"])
+def show_store(request, duration, filename):
+    
+    frameurl = "store/"+filename
+    if "store" in cache:
+        if cache["store"]['path'] == frameurl:
+            info(">", 'Cache Used for "store"')
+            j = cache["store"]['data']
+    else:
+       return "Not found", 404
+    ministick = StickFramePlayer()
+    ministick.loadJson(j)
+    rowdur = float(duration)/float(ministick.width)
+    for col in ministick.getNextColumn():
+      for y in range(ministick.height):
         led_strip.set_rgb(y,
                           ministick.ourPalette[col[y]*3],
                           ministick.ourPalette[(col[y]*3)+1],
@@ -64,27 +178,19 @@ def hello(request, name):
                           10
                           )
 
-    time.sleep(1.0 / UPDATES)
-  led_strip.clear()
-  return await render_template("example.html", name=name)
+      time.sleep(rowdur)
+    led_strip.clear()
+    return server.Response('{"success":1}', status=200, headers={"Content-Type":"application/json"})
 
-# response with custom status code
-@server.route("/are/you/a/teapot", methods=["GET"])
-def teapot(request):
-  return "Yes", 418
+  
 
-# custom response object
-@server.route("/response", methods=["GET"])
-def response_object(request):
-  return server.Response("test body", status=302, content_type="text/html", headers={"Cache-Control": "max-age=3600"})
+@server.route("/", methods=["GET"])
+def index(request):
+    j = await fetchCached(APIURL, "catergories", "data/categories.json")
 
-# query string example
-@server.route("/random", methods=["GET"])
-def random_number(request):
-  import random
-  min = int(request.query.get("min", 0))
-  max = int(request.query.get("max", 100))
-  return str(random.randint(min, max))
+    return await render_template("list.html", name="Catergories", path="/categories/", items=j)
+    
+
 
 # catchall example
 @server.catchall()
@@ -93,3 +199,7 @@ def catchall(request):
 
 # start the webserver
 server.run()
+
+
+
+
