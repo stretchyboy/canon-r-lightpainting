@@ -202,7 +202,7 @@ async function sendConnect() {
 
 async function sendSightingDots(on) {
   // Associate the FormData object with the form element
-  console.log("sendSightingDots", on)
+  //console.log("sendSightingDots", on)
   try {
         const response = await fetch("/sightingdots/"+on, {
         method: "GET",
@@ -259,7 +259,7 @@ sightingdots.addEventListener("change", (event) => {
   if (sightingdots.checked == true){
     on = 1
   }
-  console.log("sightingdots", event, on)
+  //console.log("sightingdots", event, on)
   sendSightingDots(on);
 });
 
