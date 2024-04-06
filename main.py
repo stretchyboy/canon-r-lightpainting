@@ -73,16 +73,23 @@ async def fetchCached(base, fetchtype, path):
     cache[fetchtype] = {}
     URL = base+path
     info(f'Requesting URL: {URL}')
-    r = urequests.get(URL)
-    # open the json data
-    j = r.json()
-    info(">", fetchtype, 'Data obtained!', path)
-    r.close()
-    cache[fetchtype] = {
-        'path':path,
-        'data':j
-    }
-    return j
+    try:
+        r = urequests.get(URL)
+        # open the json data
+        j = r.json()
+        info(">", fetchtype, 'Data obtained!', path)
+        r.close()
+        cache[fetchtype] = {
+            'path':path,
+            'data':j
+        }
+        return j
+    except ValueError as e:
+        error("> fetchCached ValueError ", e)
+    except MemoryError as e:
+        error("> fetchCached MemoryError ", e)
+    except Exception as e:
+        error("> fetchCached Exception ", e)
 
 def render_list(path, items):
     return "\n".join([f'<li><a href="{path}{item}">{item}</a></li>' for item in items])
@@ -119,67 +126,106 @@ def index(request, cat):
     return await render_template("list.html", name=f"Category: {cat}", path=f"/categories/{cat}/anim/", items=j)
     
 @server.route("/categories/<cat>/anim/<anim>", methods=["GET"])
-def index(request, cat, anim):
+def control(request, cat, anim):
+    l = await fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/1.json")
     j = await fetchCached(APIURL, "anim", f"data/categories/{cat}/anim/{anim}.json")
-
+    
+    print("l", l)
+    sWidthCM = str(l["widthCM"])
+    
+    print("sWidthCM", sWidthCM)
     cat = server.urldecode(cat)
     anim = server.urldecode(anim)
-    
+    src = ""
+    if "http" in j['source']:
+        src = j['source']
     return await render_template(
         "control.html",
         name=f"Category: {cat} : Anim: {anim}",
         path=f"/categories/{cat}/anim/",
-        items=j,
+        cat=cat,
+        anim=anim,
+        currentframe = "1",
+        framecount=str(j['frames']),
+        src=src,
+        widthCM = sWidthCM,
         CAMERAURL = CAMERAURL 
 )
 
-@server.route("/load/store/<filename>", ["GET"])
-def load_store(request, filename):
-    frameurl = "store/"+filename
-    if "store" in cache:
-        if cache["store"]['path'] == frameurl:
-            info(">", 'Cache Used for "store"')
-            j = cache["store"]['data']
-            return server.Response(json.dumps(j), status=200, headers={"Content-Type":"application/json"})
+@server.route("/js/<filename>", ["GET"])
+def staticjs(request, filename):
+    with open(filename, "r") as f:
+        return server.Response(f.read(), status=200, headers={"Content-Type":"text/javascript","Cache-Control": "max-age=3600"})
+
+@server.route("/css/<filename>", ["GET"])
+def staticcss(request, filename):
+    with open(filename, "r") as f:
+        return server.Response(f.read(), status=200, headers={"Content-Type":"text/css","Cache-Control": "max-age=3600"})
+
+@server.route("/favicon.ico", ["GET"])
+def staticfavicon(request):
+    with open("favicon.ico", "rb") as f:
+        return server.Response(f.read(), status=200, headers={"Content-Type":"image/vnd.microsoft.icon","Cache-Control": "max-age=3600"})
+
+#await fetch("/load/"+formData.get("cat")+"/anim/"+formData.get("anim")+"/"+formData.get("frame"),
+@server.route("/load/<cat>/anim/<anim>/<frame>", methods=["GET"])
+def load_frame(request, cat, anim, frame):
+    try:
+        j = fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/{frame}.json")
+        '''
+        d = {
+            "frame": int(frame),
+            "heightCM": j["heightCM"],
+            "widthCM": j["widthCM"],
+            "height": j["heightCM"],
+            "width": j["width"]
+            }
+        '''
+        #text = json.dumps(d)
+        #print("load_frame",cat, anim, frame, text)
+        return server.Response('{"success":1}', status=200)#, headers={"Content-Type":"application/json"})
     
-    URL = APIURL+frameurl
-    info(f'Requesting URL: {URL}')
-    r = urequests.get(URL)
-    # open the json data
-    j = r.json()
-    #info("> Store Data obtained!", j)
-    r.close()
-    cache["store"] = {
-        'path':frameurl,
-        'data':j
-    }
-    return server.Response(json.dumps(j), status=200, headers={"Content-Type":"application/json"})
+        #return server.Response(text, status=200, headers={"Content-Type":"application/json"})
+    except ValueError as e:
+        error("> load_frame ValueError ", e)
+    except MemoryError as e:
+        error("> load_frame MemoryError ", e)
+    except Exception as e:
+        error("> load_frame Exception ", e)
+        
+@server.route("/show/<cat>/anim/<anim>/<frame>/<duration>", methods=["GET"])
+def show_frame(request, cat, anim, frame, duration):
+    try:
+        j = await fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/{frame}.json")
+        print("show_frame", j)
+        ministick = StickFramePlayer()
+        ministick.loadJson(j)
+        rowdur = float(duration)/float(ministick.width)
+        for col in ministick.getNextColumn():
+          for y in range(ministick.height):
+            led_strip.set_rgb(y,
+                              ministick.ourPalette[col[y]*3],
+                              ministick.ourPalette[(col[y]*3)+1],
+                              ministick.ourPalette[(col[y]*3)+2],
+                              10
+                              )
 
-@server.route("/show/<duration>/store/<filename>", ["GET"])
-def show_store(request, duration, filename):
-    frameurl = "store/"+filename
-    if "store" in cache:
-        if cache["store"]['path'] == frameurl:
-            info(">", 'Cache Used for "store"')
-            j = cache["store"]['data']
-    else:
-       return "Not found", 404
-    ministick = StickFramePlayer()
-    ministick.loadJson(j)
-    rowdur = float(duration)/float(ministick.width)
-    for col in ministick.getNextColumn():
-      for y in range(ministick.height):
-        led_strip.set_rgb(y,
-                          ministick.ourPalette[col[y]*3],
-                          ministick.ourPalette[(col[y]*3)+1],
-                          ministick.ourPalette[(col[y]*3)+2],
-                          10
-                          )
-
-      time.sleep(rowdur)
-    led_strip.clear()
-    return server.Response('{"success":1}', status=200, headers={"Content-Type":"application/json"})
-
+          time.sleep(rowdur)
+        led_strip.clear()
+        return server.Response('{"success":1}', status=200)#, headers={"Content-Type":"application/json"})
+    except ValueError as e:
+        error("> show_frame ValueError ", e)
+        led_strip.clear()
+        return server.Response('{"success":0}', status=500)#, headers={"Content-Type":"application/json"})
+    except MemoryError as e:
+        error("> show_frame MemoryError ", e)
+        led_strip.clear()
+        return server.Response('{"success":0}', status=500)#, headers={"Content-Type":"application/json"})
+    except Exception as e:
+        error("> show_frame Exception ", e)
+        led_strip.clear()
+        return server.Response('{"success":0}', status=500)#, headers={"Content-Type":"application/json"})
+    
 @server.route("/sightingdots/<on>", methods=["GET"]) 
 def showSightingDots(request, on):
     if int(on):
@@ -187,7 +233,7 @@ def showSightingDots(request, on):
         led_strip.set_rgb(NUM_LEDS-1,255,255,255,10)
     else:
         led_strip.clear()
-    return server.Response('{"success":1}', status=200, headers={"Content-Type":"application/json"})
+    return server.Response('{"success":1}', status=200)#, headers={"Content-Type":"application/json"})
     
 @server.route("/", methods=["GET"])
 def index(request):
