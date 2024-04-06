@@ -49,7 +49,7 @@ class StickFrame(StickFramePlayer):
             
     def setImage(self, im):
         self.im = im.quantize(dither = Image.NONE)
-        self.bitDepth = int(round(math.log2(len(self.im.getcolors())),0))
+        self.bitDepth = int(math.ceil(math.log2(len(self.im.getcolors())),0))
         self.ourPalette = self.im.getpalette()[:3*pow(2,self.bitDepth)]
         self.resizeImage()
         if(self.debug):

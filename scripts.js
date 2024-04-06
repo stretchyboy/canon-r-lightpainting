@@ -172,6 +172,9 @@ sightingdots.addEventListener("change", (event) => {
   sendSightingDots(on);
 });
 
+frame.addEventListener("change", (event) => {
+  unload()
+})
 
 increment.addEventListener("click", (event) => {
     event.preventDefault();

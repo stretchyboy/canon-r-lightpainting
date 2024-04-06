@@ -127,10 +127,10 @@ def index(request, cat):
     
 @server.route("/categories/<cat>/anim/<anim>", methods=["GET"])
 def control(request, cat, anim):
-    l = await fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/1.json")
+    k = fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/1.json")
     j = await fetchCached(APIURL, "anim", f"data/categories/{cat}/anim/{anim}.json")
-    
-    print("l", l)
+    l = await k
+    #print("l", l)
     sWidthCM = str(l["widthCM"])
     
     print("sWidthCM", sWidthCM)
@@ -197,20 +197,28 @@ def load_frame(request, cat, anim, frame):
 def show_frame(request, cat, anim, frame, duration):
     try:
         j = await fetchCached(APIURL, "frame", f"data/categories/{cat}/anim/{anim}/{frame}.json")
-        print("show_frame", j)
+        #print("show_frame", j)
         ministick = StickFramePlayer()
         ministick.loadJson(j)
         rowdur = float(duration)/float(ministick.width)
-        for col in ministick.getNextColumn():
-          for y in range(ministick.height):
-            led_strip.set_rgb(y,
-                              ministick.ourPalette[col[y]*3],
-                              ministick.ourPalette[(col[y]*3)+1],
-                              ministick.ourPalette[(col[y]*3)+2],
-                              10
-                              )
-
-          time.sleep(rowdur)
+        try : 
+            for col in ministick.getNextColumn():
+              for y in range(ministick.height):
+                try :
+                    r = ministick.ourPalette[col[y]*3]
+                    g = ministick.ourPalette[(col[y]*3)+1]
+                    b = ministick.ourPalette[(col[y]*3)+2]
+                except Exception as e:
+                    pass
+                    #error("> show_frame within palette Exception ", e, col[y]*3, len(ministick.ourPalette))
+                try:
+                    led_strip.set_rgb(y, r, g, b, 10 )
+                except Exception as e:
+                    error("> show_frame set_rgb Exception ", e, y, r, g, b, 10 )
+                
+              time.sleep(rowdur)
+        except Exception as e:
+            error("> show_frame within col Exception ", e, col)
         led_strip.clear()
         return server.Response('{"success":1}', status=200)#, headers={"Content-Type":"application/json"})
     except ValueError as e:
